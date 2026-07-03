@@ -1,3 +1,7 @@
+[private]
+default:
+    just --list
+
 # Deploy (or update) the plugin on the ereader over Termux SSH.
 deploy host="192.168.178.108" port="8022":
     ./deploy.sh {{host}} {{port}}
