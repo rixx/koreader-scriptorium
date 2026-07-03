@@ -210,6 +210,8 @@ check(req.headers["Authorization"] == "Bearer test-token", "bearer auth header")
 check(req.url == "https://books.rixx.de/api/koreader/sync", "sync URL")
 local payload = req.source
 check(payload.plugin_version == require("scriptorium_api").VERSION, "plugin_version in payload")
+local meta = dofile("scriptorium.koplugin/_meta.lua")
+check(meta.version == require("scriptorium_api").VERSION, "_meta.lua version matches Api.VERSION")
 check(payload.device.id == "test-device-uuid" and payload.device.model == "TestDevice", "device info")
 check(#payload.books == 1 and payload.books[1].md5 == ("a"):rep(32), "only the unpushed finished book sent")
 check(#payload.books[1].highlights == 3, "highlights included")
