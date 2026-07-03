@@ -32,6 +32,10 @@ Settings.
 
 ## Development
 
-- `luacheck scriptorium.koplugin` — lint (config in `.luacheckrc`)
-- `luajit tests/test_collect.lua && luajit tests/test_main.lua` — stub-based
-  smoke tests, see `tests/README.md`
+- `just fmt` — format the Lua sources (stylua, config in `stylua.toml`)
+- `just check` — CI checks: `stylua --check` plus luacheck (config in
+  `.luacheckrc`)
+- `just test` — stub-based smoke tests (plain luajit), see `tests/README.md`
+
+CI (`.github/workflows/ci.yml`) runs `just check` and `just test` on every
+push and pull request.

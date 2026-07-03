@@ -34,7 +34,7 @@ local State = require("scriptorium_state")
 -- skip the scan if the last attempt was this recent (SPEC §5.4).
 local DEBOUNCE_SECONDS = 60
 
-local Scriptorium = WidgetContainer:extend{
+local Scriptorium = WidgetContainer:extend {
     name = "scriptorium",
     is_doc_only = false,
 }
@@ -73,7 +73,7 @@ function Scriptorium:notify(text, interactive)
     if not interactive then
         timeout = 5 -- non-blocking for background pushes (SPEC §5.6)
     end
-    UIManager:show(InfoMessage:new{
+    UIManager:show(InfoMessage:new {
         text = text,
         timeout = timeout,
     })
@@ -117,7 +117,9 @@ function Scriptorium:addToMainMenu(menu_items)
                     },
                     {
                         text = _("Periodic sync"),
-                        help_text = _("Scan for finished, not yet pushed books whenever a book is closed or the device suspends, resumes, powers off, or connects to a network. Never turns on WiFi by itself."),
+                        help_text = _(
+                            "Scan for finished, not yet pushed books whenever a book is closed or the device suspends, resumes, powers off, or connects to a network. Never turns on WiFi by itself."
+                        ),
                         checked_func = function()
                             return self.state:get("periodic_sync")
                         end,
@@ -128,7 +130,9 @@ function Scriptorium:addToMainMenu(menu_items)
                     },
                     {
                         text = _("Push as soon as a book is finished"),
-                        help_text = _("Try to push right when a book is marked as finished, instead of waiting for the next periodic scan."),
+                        help_text = _(
+                            "Try to push right when a book is marked as finished, instead of waiting for the next periodic scan."
+                        ),
                         checked_func = function()
                             return self.state:get("push_on_finish")
                         end,
@@ -154,9 +158,15 @@ function Scriptorium:addToMainMenu(menu_items)
                 text = _("About"),
                 keep_menu_open = true,
                 callback = function()
-                    UIManager:show(InfoMessage:new{
-                        text = T(_("Scriptorium plugin %1\n\nServer: %2\nBooks pushed so far: %3\n\nPushes finished books with their highlights to scriptorium."),
-                            Api.VERSION, self.state:get("server_url"), self.state:pushedCount()),
+                    UIManager:show(InfoMessage:new {
+                        text = T(
+                            _(
+                                "Scriptorium plugin %1\n\nServer: %2\nBooks pushed so far: %3\n\nPushes finished books with their highlights to scriptorium."
+                            ),
+                            Api.VERSION,
+                            self.state:get("server_url"),
+                            self.state:pushedCount()
+                        ),
                     })
                 end,
             },
@@ -166,7 +176,7 @@ end
 
 function Scriptorium:editServerSettings(touchmenu_instance)
     local dialog
-    dialog = MultiInputDialog:new{
+    dialog = MultiInputDialog:new {
         title = _("Scriptorium server"),
         fields = {
             {
@@ -217,7 +227,10 @@ function Scriptorium:pushCurrentBook(auto)
     local interactive = not auto
     if not self:isConfigured() then
         if interactive then
-            self:notify(_("Scriptorium is not configured yet — set the server URL and API token in the settings."), true)
+            self:notify(
+                _("Scriptorium is not configured yet — set the server URL and API token in the settings."),
+                true
+            )
         end
         return
     end
@@ -230,7 +243,9 @@ function Scriptorium:pushCurrentBook(auto)
     -- Flush in-memory reading statistics so the DB query sees this session
     -- (additive write by the statistics plugin's own API; SPEC §2.2).
     if self.ui.statistics then
-        pcall(function() self.ui.statistics:insertDB() end)
+        pcall(function()
+            self.ui.statistics:insertDB()
+        end)
     end
     -- Live annotations: the sidecar on disk may be stale until close.
     local annotations = self.ui.annotation and self.ui.annotation.annotations
@@ -352,7 +367,9 @@ function Scriptorium:doPush(jobs, interactive)
         header = T(_("Scriptorium: %1 of %2 book(s) failed"), errors, #results)
     end
     if fatal_err then
-        header = header .. "\n" .. T(_("Push aborted early (%1) — remaining books will be retried on the next scan."), fatal_err)
+        header = header
+            .. "\n"
+            .. T(_("Push aborted early (%1) — remaining books will be retried on the next scan."), fatal_err)
     end
     self:notify(header .. "\n\n" .. table.concat(lines, "\n"), interactive)
 end
@@ -367,7 +384,10 @@ function Scriptorium:scanAndPush(opts)
     opts = opts or {}
     if not self:isConfigured() then
         if opts.interactive then
-            self:notify(_("Scriptorium is not configured yet — set the server URL and API token in the settings."), true)
+            self:notify(
+                _("Scriptorium is not configured yet — set the server URL and API token in the settings."),
+                true
+            )
         end
         return
     end
@@ -378,7 +398,9 @@ function Scriptorium:scanAndPush(opts)
     local live_path = self.ui and self.ui.document and self.ui.document.file
 
     if self.ui and self.ui.statistics then
-        pcall(function() self.ui.statistics:insertDB() end)
+        pcall(function()
+            self.ui.statistics:insertDB()
+        end)
     end
 
     local jobs = {}
@@ -386,8 +408,8 @@ function Scriptorium:scanAndPush(opts)
     for _, entry in ipairs(ReadHistory.hist or {}) do
         local path = entry.file
         if path and not entry.dim then
-            local job = self:examineBook(path, live_path == path, opts.force,
-                scan_cache, pushed, push_abandoned, seen_md5)
+            local job =
+                self:examineBook(path, live_path == path, opts.force, scan_cache, pushed, push_abandoned, seen_md5)
             if job then
                 table.insert(jobs, job)
             end
@@ -451,8 +473,7 @@ function Scriptorium:examineBook(path, is_live, force, scan_cache, pushed, push_
     end
 
     local summary = ds:readSetting("summary") or {}
-    local eligible = summary.status == "complete"
-        or (push_abandoned and summary.status == "abandoned")
+    local eligible = summary.status == "complete" or (push_abandoned and summary.status == "abandoned")
     if not eligible then
         return done()
     end
@@ -468,8 +489,7 @@ function Scriptorium:examineBook(path, is_live, force, scan_cache, pushed, push_
     seen_md5[book.md5] = true
 
     local record = pushed[book.md5]
-    if record and record.modified == book.finished_on
-            and record.fingerprint == fp_or_err then
+    if record and record.modified == book.finished_on and record.fingerprint == fp_or_err then
         return done() -- server already has this read with these highlights
     end
 
@@ -484,8 +504,12 @@ end
 -- ----------------------------------------------------- lifecycle triggers --
 
 function Scriptorium:maybeScan()
-    if not self.state:get("periodic_sync") then return end
-    if not self:isConfigured() then return end
+    if not self.state:get("periodic_sync") then
+        return
+    end
+    if not self:isConfigured() then
+        return
+    end
     local now = os.time()
     if now - (self.state:get("last_attempt") or 0) < DEBOUNCE_SECONDS then
         return
@@ -518,10 +542,16 @@ function Scriptorium:onReaderReady()
 end
 
 function Scriptorium:onEndOfBook()
-    if not self.state:get("push_on_finish") then return end
-    if not self:isConfigured() then return end
+    if not self.state:get("push_on_finish") then
+        return
+    end
+    if not self:isConfigured() then
+        return
+    end
     UIManager:nextTick(function()
-        if not (self.ui and self.ui.doc_settings) then return end
+        if not (self.ui and self.ui.doc_settings) then
+            return
+        end
         local summary = self.ui.doc_settings:readSetting("summary") or {}
         if summary.status == "complete" and self.status_snapshot ~= "complete" then
             self.status_snapshot = "complete"

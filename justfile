@@ -11,8 +11,13 @@ test:
     luajit tests/test_collect.lua
     luajit tests/test_main.lua
 
-# Lint the plugin (requires luacheck).
-lint:
+# Format the Lua sources in place (requires stylua).
+fmt:
+    stylua scriptorium.koplugin tests
+
+# CI checks: formatting (stylua --check) and linting (luacheck).
+check:
+    stylua --check scriptorium.koplugin tests
     luacheck scriptorium.koplugin
 
 # Push main and publish a GitHub release for the version in _meta.lua.

@@ -20,7 +20,9 @@ local STATS_DB = DataStorage:getSettingsDir() .. "/statistics.sqlite3"
 
 -- doc_props.authors / identifiers / keywords are newline-separated strings.
 local function splitLines(str)
-    if type(str) ~= "string" or str == "" then return nil end
+    if type(str) ~= "string" or str == "" then
+        return nil
+    end
     local out = {}
     for line in str:gmatch("[^\n]+") do
         line = line:match("^%s*(.-)%s*$")
@@ -28,7 +30,9 @@ local function splitLines(str)
             table.insert(out, line)
         end
     end
-    if #out == 0 then return nil end
+    if #out == 0 then
+        return nil
+    end
     return out
 end
 
@@ -87,10 +91,12 @@ function Collect.readStats(md5)
     local ok, err = pcall(function()
         local conn = SQ3.open(STATS_DB, "ro")
         local read_ok, read_err = pcall(function()
-            local total = conn:rowexec(
-                ("SELECT SUM(total_read_time) FROM book WHERE md5 = '%s'"):format(md5))
+            local total = conn:rowexec(("SELECT SUM(total_read_time) FROM book WHERE md5 = '%s'"):format(md5))
             local first = conn:rowexec(
-                ("SELECT MIN(start_time) FROM page_stat_data WHERE id_book IN (SELECT id FROM book WHERE md5 = '%s')"):format(md5))
+                ("SELECT MIN(start_time) FROM page_stat_data WHERE id_book IN (SELECT id FROM book WHERE md5 = '%s')"):format(
+                    md5
+                )
+            )
             if total then
                 total_time = tonumber(total)
             end
@@ -99,7 +105,9 @@ function Collect.readStats(md5)
             end
         end)
         conn:close()
-        if not read_ok then error(read_err) end
+        if not read_ok then
+            error(read_err)
+        end
     end)
     if not ok then
         logger.warn("scriptorium: statistics read failed:", err)
@@ -162,10 +170,8 @@ function Collect.bookPayload(ds, annotations)
         identifiers = rapidjson.array(splitLines(props.identifiers) or {}),
         pages = tonumber(ds:readSetting("doc_pages")),
         status = summary.status,
-        rating = (type(summary.rating) == "number" and summary.rating > 0)
-            and summary.rating or nil,
-        summary_note = (type(summary.note) == "string" and summary.note ~= "")
-            and summary.note or nil,
+        rating = (type(summary.rating) == "number" and summary.rating > 0) and summary.rating or nil,
+        summary_note = (type(summary.note) == "string" and summary.note ~= "") and summary.note or nil,
         finished_on = summary.modified,
         started_on = started_on,
         total_time_seconds = total_time,

@@ -56,18 +56,21 @@ function Api.sync(server_url, api_key, books)
     local sink = {}
     -- Large-block timeouts: highlight-heavy payloads can be big (SPEC §5.6).
     socketutil:set_timeout(socketutil.LARGE_BLOCK_TIMEOUT, socketutil.LARGE_TOTAL_TIMEOUT)
-    local code, headers, status = socket.skip(1, http.request{
-        url = url,
-        method = "POST",
-        headers = {
-            ["Authorization"] = "Bearer " .. api_key,
-            ["Content-Type"] = "application/json",
-            ["Content-Length"] = tostring(#body),
-            ["Accept"] = "application/json",
-        },
-        source = ltn12.source.string(body),
-        sink = ltn12.sink.table(sink),
-    })
+    local code, headers, status = socket.skip(
+        1,
+        http.request {
+            url = url,
+            method = "POST",
+            headers = {
+                ["Authorization"] = "Bearer " .. api_key,
+                ["Content-Type"] = "application/json",
+                ["Content-Length"] = tostring(#body),
+                ["Accept"] = "application/json",
+            },
+            source = ltn12.source.string(body),
+            sink = ltn12.sink.table(sink),
+        }
+    )
     socketutil:reset_timeout()
 
     logger.dbg("scriptorium: POST", url, "->", code)
