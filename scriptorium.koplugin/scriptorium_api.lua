@@ -15,8 +15,18 @@ local socket = require("socket")
 local socketutil = require("socketutil")
 local _ = require("gettext")
 
+-- The version lives in _meta.lua (the one place KOReader and the appstore
+-- plugin read); load it from the file next to this one rather than keeping
+-- a second copy. _meta.lua must stay standalone, so the dependency can only
+-- point this way.
+local function metaVersion()
+    local here = debug.getinfo(1, "S").source:match("^@(.*)/[^/]+$")
+    local ok, meta = pcall(dofile, here .. "/_meta.lua")
+    return ok and meta.version or "0.0.0"
+end
+
 local Api = {
-    VERSION = "1.0.1",
+    VERSION = metaVersion(),
 }
 
 --[[--
