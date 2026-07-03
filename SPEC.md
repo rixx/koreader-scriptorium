@@ -187,12 +187,17 @@ Installed by dropping the `scriptorium.koplugin/` folder into
 
 ```
 scriptorium.koplugin/
-    _meta.lua        -- { fullname = "Scriptorium", description = ... }
-    main.lua         -- WidgetContainer subclass, event handlers, menu, scheduling
-    collect.lua      -- build the push payload for one book (sidecar + stats DB)
-    api.lua          -- HTTP client: POST /api/koreader/sync (Readwise-target pattern)
-    state.lua        -- pushed-state + scan-cache persistence (LuaSettings)
+    _meta.lua                -- { fullname = "Scriptorium", description = ... }
+    main.lua                 -- WidgetContainer subclass, event handlers, menu, scheduling
+    scriptorium_collect.lua  -- build the push payload for one book (sidecar + stats DB)
+    scriptorium_api.lua      -- HTTP client: POST /api/koreader/sync (Readwise-target pattern)
+    scriptorium_state.lua    -- pushed-state + scan-cache persistence (LuaSettings)
 ```
+
+Module files carry a `scriptorium_` prefix because KOReader appends *every*
+plugin's directory to `package.path` and `package.loaded` is global — a
+generic `require("api")` would silently pick up whichever plugin's `api.lua`
+loaded first.
 
 ### 5.2 Settings
 
@@ -226,8 +231,12 @@ For the **current book** (live reader): `self.ui.doc_settings` for
 split `authors`/`identifiers` on `\n`.
 
 For **closed books** (periodic scan / push-all): iterate reading history
-(`require("readhistory")`), open sidecars read-only via `DocSettings:open(path)`,
+(`require("readhistory")`), open sidecars read-only via
+`DocSettings:findSidecarFile(path)` + `DocSettings.openSettingsFile(sidecar)`,
 select books with `summary.status == "complete"` (or `"abandoned"` if enabled).
+**Never `DocSettings:open(path)`** — despite looking like a plain read, it
+`os.remove`s sidecar candidate files it considers invalid (empty file, failed
+parse), and the device data has no backup. `openSettingsFile` is a pure read.
 Sidecars without an `annotations` key (pre-2024.07, never reopened) are
 skipped with a log line — no legacy-format parsing (§1.5).
 
@@ -241,7 +250,12 @@ statistics plugin disabled.
 ### 5.4 Triggers
 
 1. **Manual (menu)** — `addToMainMenu` under Tools:
-   - *Push this book to Scriptorium* (reader only, any status — force-push)
+   - *Push this book to Scriptorium* (reader only — force-push: bypasses the
+     pushed-state/fingerprint check. The book must still be marked complete
+     or abandoned with a finish date: the server schema rejects anything
+     else, and since Django Ninja validates the whole batch, one invalid
+     book would 400 every book in the same push — so the plugin refuses
+     client-side with a clear message instead.)
    - *Push all finished books* (full history scan, batched — also the backfill)
    - *Settings* (server URL, API key, toggles)
    - Plus a `Dispatcher:registerAction("ScriptoriumPush", ...)` so it's
@@ -363,7 +377,8 @@ Response, per book:
       "book": "ursula-k-le-guin/the-left-hand-of-darkness",
       "read_id": 812,
       "highlights_stored": 14,
-      "warnings": ["no ISBN found; matched by title/author"]
+      "warnings": ["no ISBN found; matched by title/author"],
+      "detail": null                     // error message when action == "error"
     }
   ]
 }
