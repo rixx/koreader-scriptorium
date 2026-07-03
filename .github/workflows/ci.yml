@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: extractions/setup-just@v4
+      - name: Install stylua
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          curl -fsSL https://github.com/JohnnyMorganz/StyLua/releases/download/v2.5.2/stylua-linux-x86_64.zip -o /tmp/stylua.zip
+          unzip -o /tmp/stylua.zip -d "$HOME/.local/bin"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Install luacheck
+        run: sudo apt-get update && sudo apt-get install -y lua-check
+      - name: Run checks
+        run: just check
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: extractions/setup-just@v4
+      - name: Install luajit
+        run: sudo apt-get update && sudo apt-get install -y luajit
+      - name: Run tests
+        run: just test
