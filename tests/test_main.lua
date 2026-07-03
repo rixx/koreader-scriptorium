@@ -307,7 +307,7 @@ plugin:scanAndPush({ interactive = true, force = true })
 check(#HTTP_CALLS == 1, "one batch pushed")
 local req = HTTP_CALLS[1]
 check(req.headers["Authorization"] == "Bearer test-token", "bearer auth header")
-check(req.url == "https://books.rixx.de/api/koreader/sync", "sync URL")
+check(req.url == "https://books.rixx.de/api/koreader/sync/", "sync URL")
 local payload = req.source
 check(payload.plugin_version == require("scriptorium_api").VERSION, "plugin_version in payload")
 local meta = dofile("scriptorium.koplugin/_meta.lua")

@@ -22,7 +22,7 @@ there).
 ## Requirements
 
 - KOReader ≥ v2024.07 (the `annotations` sidecar format)
-- A scriptorium instance with the `/api/koreader/sync` endpoint and an API key
+- A scriptorium instance with the `/api/koreader/sync/` endpoint and an API key
 
 ## Installation
 

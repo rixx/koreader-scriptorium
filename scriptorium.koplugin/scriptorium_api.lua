@@ -39,7 +39,9 @@ Push one or several books.
         HTTP status code (nil for pre-HTTP failures like encoding errors).
 ]]
 function Api.sync(server_url, api_key, books)
-    local url = server_url:gsub("/+$", "") .. "/api/koreader/sync"
+    -- Trailing slash is mandatory: Django's APPEND_SLASH cannot redirect a
+    -- POST, so the slash-less URL 500s server-side.
+    local url = server_url:gsub("/+$", "") .. "/api/koreader/sync/"
     local payload = {
         plugin_version = Api.VERSION,
         device = {

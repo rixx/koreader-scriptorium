@@ -190,7 +190,7 @@ scriptorium.koplugin/
     _meta.lua                -- { fullname = "Scriptorium", description = ... }
     main.lua                 -- WidgetContainer subclass, event handlers, menu, scheduling
     scriptorium_collect.lua  -- build the push payload for one book (sidecar + stats DB)
-    scriptorium_api.lua      -- HTTP client: POST /api/koreader/sync (Readwise-target pattern)
+    scriptorium_api.lua      -- HTTP client: POST /api/koreader/sync/ (Readwise-target pattern)
     scriptorium_state.lua    -- pushed-state + scan-cache persistence (LuaSettings)
 ```
 
@@ -322,7 +322,7 @@ The canonical definition lives with the server:
 `../scriptorium/KOREADER.md` (and `/api/docs` once implemented). Summary of
 what the plugin sends and gets back:
 
-`POST <server_url>/api/koreader/sync`, header
+`POST <server_url>/api/koreader/sync/`, header
 `Authorization: Bearer <api_key>`, one or several books per call:
 
 ```json
