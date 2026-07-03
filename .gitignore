@@ -1,0 +1,3 @@
+# Local development secrets — never commit these.
+.dev-api-token
+*.local.lua
