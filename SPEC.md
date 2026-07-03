@@ -159,9 +159,10 @@ run *alongside* this plugin; the two don't conflict.
    back to "reading" then "complete" again → `summary.modified` gets a new
    date, which the plugin treats as a new unpushed finish and the server as a
    new read.
-4. **API key lives on the device** in a plain LuaSettings file. Acceptable for
-   a single-user personal setup over HTTPS; if it ever leaks, rotate
-   `SCRIPTORIUM_API_KEY` on the server.
+4. **API token lives on the device** in a plain LuaSettings file. Acceptable
+   for a single-user personal setup over HTTPS. Server tokens are named and
+   individually revocable (managed at `/b/tokens/`), so the device gets its
+   own token (e.g. "inkpalm") that can be killed independently if it leaks.
 5. **Moving books to a "done" directory** (via KOReader's own move UI) is
    safe. The partial MD5 hashes file *content* samples only, and KOReader's
    move carries the `.sdr` sidecar along (`DocSettings.updateLocation`,
