@@ -16,7 +16,7 @@ local socketutil = require("socketutil")
 local _ = require("gettext")
 
 local Api = {
-    VERSION = "1.0.0",
+    VERSION = "1.0.1",
 }
 
 --[[--
@@ -25,7 +25,8 @@ Push one or several books.
 @param server_url e.g. "https://books.rixx.de" (no trailing slash needed)
 @param api_key bearer token
 @param books array of book payload tables (from scriptorium_collect)
-@return results array (per-book, see SPEC §6), or nil + error message.
+@return results array (per-book, see SPEC §6), or nil + error message +
+        HTTP status code (nil for pre-HTTP failures like encoding errors).
 ]]
 function Api.sync(server_url, api_key, books)
     local url = server_url:gsub("/+$", "") .. "/api/koreader/sync"
@@ -69,16 +70,18 @@ function Api.sync(server_url, api_key, books)
         local ok, result = pcall(rapidjson.decode, content)
         if not ok or type(result) ~= "table" or type(result.results) ~= "table" then
             logger.warn("scriptorium: unparseable server response:", content:sub(1, 200))
-            return nil, _("Server response was not valid JSON")
+            return nil, _("Server response was not valid JSON"), code
         end
         return result.results
     elseif code == 401 then
-        return nil, _("Authentication failed — check the API token")
+        return nil, _("Authentication failed — check the API token"), code
+    elseif code == 413 then
+        return nil, _("Payload too large for the server"), code
     elseif code == 426 then
-        return nil, _("This plugin version is too old for the server — please update it")
+        return nil, _("This plugin version is too old for the server — please update it"), code
     else
         logger.warn("scriptorium: server error", code, content:sub(1, 500))
-        return nil, _("Server error ") .. tostring(code)
+        return nil, _("Server error ") .. tostring(code), code
     end
 end
 

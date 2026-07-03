@@ -4,8 +4,11 @@
 local SIDECARS = {}   -- path -> data table
 local MTIMES = {}     -- sidecar path -> mtime
 local HTTP_CALLS = {} -- captured request payloads (as Lua tables)
-local HTTP_RESPONSE   -- canned decoded response
+local HTTP_RESPONSE   -- canned decoded response (used when HTTP_HANDLER is nil)
+local HTTP_HANDLER    -- optional function(payload) -> code, decoded response
+local CURRENT_RESPONSE
 local SHOWN = {}      -- InfoMessages shown
+local HIST            -- reading history entries, set below
 
 local now = os.time()
 
@@ -30,7 +33,7 @@ package.preload["rapidjson"] = function()
     return {
         array = function(t) return t end,
         encode = function(t) return t end, -- pass tables through; http stub captures them
-        decode = function(body) return HTTP_RESPONSE end,
+        decode = function(body) return CURRENT_RESPONSE end,
     }
 end
 package.preload["device"] = function() return { model = "TestDevice" } end
@@ -95,7 +98,13 @@ end
 package.preload["socket.http"] = function()
     return { request = function(req)
         table.insert(HTTP_CALLS, req)
-        return 1, 200, { "content-type: json" }, "200 OK"
+        local code
+        if HTTP_HANDLER then
+            code, CURRENT_RESPONSE = HTTP_HANDLER(req.source)
+        else
+            code, CURRENT_RESPONSE = 200, HTTP_RESPONSE
+        end
+        return 1, code, { "content-type: json" }, tostring(code)
     end }
 end
 package.preload["ltn12"] = function()
@@ -110,15 +119,16 @@ package.preload["socketutil"] = function()
         set_timeout = function() end, reset_timeout = function() end,
     }
 end
+HIST = {
+    { file = "/books/finished.epub" },
+    { file = "/books/inprogress.epub" },
+    { file = "/books/alreadypushed.epub" },
+    { file = "/books/abandoned.epub" },
+    { file = "/books/deleted.epub", dim = true },
+    { file = "/books/legacy.epub" },
+}
 package.preload["readhistory"] = function()
-    return { hist = {
-        { file = "/books/finished.epub" },
-        { file = "/books/inprogress.epub" },
-        { file = "/books/alreadypushed.epub" },
-        { file = "/books/abandoned.epub" },
-        { file = "/books/deleted.epub", dim = true },
-        { file = "/books/legacy.epub" },
-    } }
+    return { hist = HIST }
 end
 -- In-memory LuaSettings
 package.preload["luasettings"] = function()
@@ -199,7 +209,7 @@ local req = HTTP_CALLS[1]
 check(req.headers["Authorization"] == "Bearer test-token", "bearer auth header")
 check(req.url == "https://books.rixx.de/api/koreader/sync", "sync URL")
 local payload = req.source
-check(payload.plugin_version == "1.0.0", "plugin_version in payload")
+check(payload.plugin_version == require("scriptorium_api").VERSION, "plugin_version in payload")
 check(payload.device.id == "test-device-uuid" and payload.device.model == "TestDevice", "device info")
 check(#payload.books == 1 and payload.books[1].md5 == ("a"):rep(32), "only the unpushed finished book sent")
 check(#payload.books[1].highlights == 3, "highlights included")
@@ -262,6 +272,89 @@ SIDECARS["/books/finished.epub"].summary.modified = "2026-07-05"
 MTIMES["/books/finished.epub.sdr/metadata.epub.lua"] = 5000
 plugin:maybeScan()
 check(#HTTP_CALLS == 6, "periodic_sync off disables background scans")
+
+-- ---- chunking and 413 handling ----
+
+local function addFinishedBook(name, md5)
+    local path = "/books/" .. name .. ".epub"
+    SIDECARS[path] = sidecar("complete", "2026-07-01", 1, md5)
+    MTIMES[path .. ".sdr/metadata.epub.lua"] = 1000
+    table.insert(HIST, { file = path })
+    return path
+end
+
+local function okHandler(payload)
+    local results = {}
+    for _, b in ipairs(payload.books) do
+        table.insert(results, { md5 = b.md5, action = "matched", read_id = 1,
+            highlights_stored = #b.highlights })
+    end
+    return 200, { results = results }
+end
+
+-- 9. Large backlogs are pushed in chunks of 5
+for i = 1, 12 do
+    addFinishedBook("bulk" .. i, string.format("%02x", 16 + i):rep(16))
+end
+HTTP_HANDLER = okHandler
+local calls_before = #HTTP_CALLS
+plugin:scanAndPush({ interactive = true, force = true })
+-- 12 bulk books + the still-pending finished.epub from test 8 = 13 jobs
+check(#HTTP_CALLS == calls_before + 3, "13 jobs pushed as 3 chunks (5+5+3)")
+local max_chunk = 0
+for i = calls_before + 1, #HTTP_CALLS do
+    max_chunk = math.max(max_chunk, #HTTP_CALLS[i].source.books)
+end
+check(max_chunk == 5, "no chunk exceeds 5 books")
+check(plugin.state:pushed()[string.format("%02x", 17):rep(16)] ~= nil, "chunked books recorded as pushed")
+check(plugin.state:pushed()[string.format("%02x", 28):rep(16)] ~= nil, "last chunk recorded as pushed")
+
+-- 10. 413 splits the chunk down to single books
+for i = 1, 3 do
+    addFinishedBook("fat" .. i, string.format("%02x", 48 + i):rep(16))
+end
+HTTP_HANDLER = function(payload)
+    if #payload.books > 1 then return 413, nil end
+    return okHandler(payload)
+end
+calls_before = #HTTP_CALLS
+plugin:scanAndPush({ interactive = true })
+-- [3] -> 413 -> [2]+[1]; [2] -> 413 -> [1]+[1]: 2 rejected + 3 single pushes
+check(#HTTP_CALLS == calls_before + 5, "413 splits chunk down to single books")
+check(plugin.state:pushed()[string.format("%02x", 49):rep(16)] ~= nil, "split books recorded as pushed")
+check(plugin.state:pushed()[string.format("%02x", 51):rep(16)] ~= nil, "all split books recorded")
+
+-- 11. A single book that still 413s becomes a per-book error, not a retry loop
+local whale_md5 = ("9"):rep(32)
+addFinishedBook("whale", whale_md5)
+HTTP_HANDLER = function() return 413, nil end
+calls_before = #HTTP_CALLS
+plugin:scanAndPush({ interactive = true })
+check(#HTTP_CALLS == calls_before + 1, "oversized single book fails once, no retry loop")
+check(plugin.state:pushed()[whale_md5] == nil, "oversized book not recorded as pushed")
+check(SHOWN[#SHOWN]:match("too large") ~= nil, "message names the size problem")
+
+-- 12. Mid-push failure: first chunk lands, the rest stays pending and retries
+SIDECARS["/books/whale.epub"] = nil -- drop the hopeless fixture
+HIST[#HIST] = { file = "/books/whale.epub", dim = true }
+for i = 1, 6 do
+    addFinishedBook("late" .. i, string.format("%02x", 64 + i):rep(16))
+end
+local call_n = 0
+HTTP_HANDLER = function(payload)
+    call_n = call_n + 1
+    if call_n == 1 then return okHandler(payload) end
+    return 500, nil
+end
+plugin:scanAndPush({ interactive = true })
+check(plugin.state:pushed()[string.format("%02x", 65):rep(16)] ~= nil, "first chunk recorded despite later failure")
+check(plugin.state:pushed()[string.format("%02x", 70):rep(16)] == nil, "unsent book not recorded")
+check(SHOWN[#SHOWN]:match("retried on the next scan") ~= nil, "partial failure explained to user")
+HTTP_HANDLER = okHandler
+calls_before = #HTTP_CALLS
+plugin:scanAndPush({ interactive = false })
+check(#HTTP_CALLS == calls_before + 1, "leftover book retried on next scan")
+check(plugin.state:pushed()[string.format("%02x", 70):rep(16)] ~= nil, "leftover book pushed on retry")
 
 print(failures == 0 and "ALL PASS" or (failures .. " FAILURES"))
 os.exit(failures == 0 and 0 or 1)

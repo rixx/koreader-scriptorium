@@ -252,19 +252,67 @@ local ACTION_TEXT = {
     error = _("error"),
 }
 
--- Send one batch and record what the server accepted. jobs is a list of
+-- Books per request: keeps each POST well below typical reverse-proxy body
+-- size limits (nginx defaults to 1 MB) even with highlight-heavy books.
+local PUSH_CHUNK_SIZE = 5
+
+-- Send jobs in chunks and record what the server accepted. jobs is a list of
 -- { book = payload, fingerprint = string, path = ?, mtime = ? }; path/mtime
 -- are set for scan jobs so the scan cache can be updated on success.
+--
+-- A 413 (payload too large) splits the offending chunk in half and retries,
+-- down to single books, so one fat backlog push can't fail wholesale. Any
+-- other failure aborts: unsent books stay out of the pushed table and the
+-- next scan retries them (SPEC §5.6).
 function Scriptorium:doPush(jobs, interactive)
-    local books = {}
-    for _, job in ipairs(jobs) do
-        table.insert(books, job.book)
+    local server_url = self.state:get("server_url")
+    local api_key = self.state:get("api_key")
+
+    local queue = {}
+    for i = 1, #jobs, PUSH_CHUNK_SIZE do
+        local chunk = {}
+        for j = i, math.min(i + PUSH_CHUNK_SIZE - 1, #jobs) do
+            table.insert(chunk, jobs[j])
+        end
+        table.insert(queue, chunk)
     end
-    local results, err = Api.sync(self.state:get("server_url"), self.state:get("api_key"), books)
-    if not results then
-        -- Nothing is recorded, so every book stays pending and the next scan
-        -- retries (SPEC §5.6).
-        self:notify(T(_("Scriptorium: push failed: %1"), err), interactive)
+
+    local results = {}
+    local fatal_err
+    while #queue > 0 do
+        local chunk = table.remove(queue, 1)
+        local books = {}
+        for _, job in ipairs(chunk) do
+            table.insert(books, job.book)
+        end
+        local chunk_results, err, code = Api.sync(server_url, api_key, books)
+        if chunk_results then
+            for _, result in ipairs(chunk_results) do
+                table.insert(results, result)
+            end
+        elseif code == 413 and #chunk > 1 then
+            logger.info("scriptorium: payload too large, splitting chunk of", #chunk)
+            local mid = math.floor(#chunk / 2)
+            local head, tail = {}, {}
+            for idx, job in ipairs(chunk) do
+                table.insert(idx <= mid and head or tail, job)
+            end
+            table.insert(queue, 1, tail)
+            table.insert(queue, 1, head)
+        elseif code == 413 then
+            table.insert(results, {
+                md5 = chunk[1].book.md5,
+                action = "error",
+                detail = _("book too large for the server's request size limit"),
+            })
+        else
+            fatal_err = err
+            break
+        end
+    end
+
+    if #results == 0 then
+        self:notify(T(_("Scriptorium: push failed: %1"), fatal_err or _("unknown error")), interactive)
         return
     end
 
@@ -302,6 +350,9 @@ function Scriptorium:doPush(jobs, interactive)
         header = T(_("Scriptorium: pushed %1 book(s)"), #results)
     else
         header = T(_("Scriptorium: %1 of %2 book(s) failed"), errors, #results)
+    end
+    if fatal_err then
+        header = header .. "\n" .. T(_("Push aborted early (%1) — remaining books will be retried on the next scan."), fatal_err)
     end
     self:notify(header .. "\n\n" .. table.concat(lines, "\n"), interactive)
 end

@@ -302,6 +302,12 @@ Keying on the content-based partial MD5 means the state survives file moves
 - All pushes wrapped in `NetworkMgr:runWhenOnline`; on failure (timeout,
   non-2xx) the book simply stays out of `pushed`, so the next scan retries it
   — a non-blocking `InfoMessage` reports the error.
+- Batches are sent in **chunks of 5 books** so a backlog push stays below
+  reverse-proxy body-size limits (nginx defaults to 1 MB and the scriptorium
+  deployment doesn't raise it). A 413 splits the chunk in half and retries,
+  down to single books; a single book that still 413s becomes a per-book
+  error instead of a retry loop. Any other failure aborts the remaining
+  chunks — those books stay pending for the next scan.
 - `socketutil:set_timeout(...)` around requests (large-block timeouts for
   highlight-heavy payloads).
 - Server `warnings` from the response are shown once per push in the
