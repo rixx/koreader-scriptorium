@@ -26,6 +26,9 @@ package.preload["datastorage"] = function()
         getSettingsDir = function()
             return "/nonexistent-settings-dir"
         end,
+        getDataDir = function()
+            return "/nonexistent-data-dir"
+        end,
     }
 end
 package.preload["lua-ljsqlite3/init"] = function()
@@ -149,6 +152,16 @@ package.preload["ffi/util"] = function()
                 return tostring(args[tonumber(n)])
             end))
         end,
+        copyFile = function()
+            error("no file copies in this test")
+        end,
+    }
+end
+package.preload["ffi/sha2"] = function()
+    return {
+        md5 = function()
+            error("no hashing in this test")
+        end,
     }
 end
 package.preload["socket"] = function()
@@ -228,10 +241,15 @@ package.preload["luasettings"] = function()
 end
 
 G_reader_settings = {
-    readSetting = function(_, key)
+    store = { cover_image_path = "/nonexistent-data-dir/cover.jpg" },
+    readSetting = function(self, key)
         if key == "device_id" then
             return "test-device-uuid"
         end
+        return self.store[key]
+    end,
+    saveSetting = function(self, key, value)
+        self.store[key] = value
     end,
 }
 

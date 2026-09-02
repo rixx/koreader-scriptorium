@@ -192,6 +192,7 @@ scriptorium.koplugin/
     scriptorium_collect.lua  -- build the push payload for one book (sidecar + stats DB)
     scriptorium_api.lua      -- HTTP client: POST /api/koreader/sync/ (Readwise-target pattern)
     scriptorium_state.lua    -- pushed-state + scan-cache persistence (LuaSettings)
+    scriptorium_wallpaper.lua -- republish the cover under a per-book filename (§5.7)
 ```
 
 Module files carry a `scriptorium_` prefix because KOReader appends *every*
@@ -210,6 +211,7 @@ Own `LuaSettings` file (`<settings dir>/scriptorium.lua`):
   periodic_sync = true,         -- debounced scan-and-push on lifecycle hooks
   push_on_finish = false,       -- optional: instant push when marked complete
   push_abandoned = false,       -- also push "On hold" books as DNF reads
+  wallpaper_dir = "/storage/emulated/0/Wallpaper",  -- empty = off (§5.7)
   pushed = { [md5] = { modified = "2026-07-01", fingerprint = "…", pushed_at = 176… } },
   scan_cache = { [path] = sdr_mtime },  -- skip unchanged sidecars cheaply
   last_attempt = 1767…,         -- unix ts of last push attempt (60s debounce)
@@ -315,6 +317,41 @@ Keying on the content-based partial MD5 means the state survives file moves
   existing").
 
 ---
+
+### 5.7 Lockscreen cover republishing (`scriptorium_wallpaper.lua`)
+
+Unrelated to pushing; it rides along because this plugin already hooks
+`onReaderReady`.
+
+KOReader's `coverimage` plugin writes the current book's cover to a fixed
+path (`cover_image_path`). The Moaan/inkPalm lockscreen picker cannot consume
+that: on selection it copies the image to `data/mogu/<SDBMHash(path)>.png`,
+stores that destination in the system property `persist.sys.mogu.wallpaper`,
+and its tap handler skips the copy when the stored value already contains the
+hash of the tapped path (`com.moan.launcher.settings.wallpaper.LocalWallpaperAdapter`,
+`android.os.MoanWallPaper.setCustomWallPaper` in `framework.jar`). A constant
+export path therefore pins the lockscreen to the first cover ever selected —
+while the picker's preview, a live read of the source file, shows the current
+one. `/data/mogu` is `system_data_file`, so nothing but the launcher (uid
+`system`) can refresh the copy: without root the tap cannot be eliminated,
+only made effective.
+
+So: after `coverimage` has written the cover (one `UIManager:nextTick` later,
+since handler order between plugins is undefined), copy it into
+`wallpaper_dir` as `cover-<md5(document path):8>.<ext>` and delete the other
+`cover-*` files there. The name is keyed on the document, not on the image
+bytes, so reopening a book keeps the picker's selection valid; opening a
+different book yields a new path, and one tap applies it.
+
+`cover_image_path` must live outside `wallpaper_dir`, or the picker lists the
+stale copy alongside the fresh one. `ensureSourceOutside` enforces that on
+plugin init and whenever the folder is edited: a `cover_image_path` that is
+unset or inside `wallpaper_dir` is rewritten to `<data dir>/cover.jpg`. It
+belongs to the `coverimage` plugin, which reads it at *its* init, so a repair
+only takes effect after the next KOReader start.
+
+Single-user plugin: `wallpaper_dir` defaults to the inkPalm's
+`/storage/emulated/0/Wallpaper` rather than to off.
 
 ## 6. API contract
 

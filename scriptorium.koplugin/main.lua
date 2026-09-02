@@ -29,6 +29,7 @@ local _ = require("gettext")
 local Api = require("scriptorium_api")
 local Collect = require("scriptorium_collect")
 local State = require("scriptorium_state")
+local Wallpaper = require("scriptorium_wallpaper")
 
 -- Lifecycle hooks fire in bursts (close→suspend, resume→network-connected);
 -- skip the scan if the last attempt was this recent (SPEC §5.4).
@@ -41,6 +42,7 @@ local Scriptorium = WidgetContainer:extend {
 
 function Scriptorium:init()
     self.state = State.open()
+    Wallpaper.ensureSourceOutside(self.state:get("wallpaper_dir"), G_reader_settings)
     self:onDispatcherRegisterActions()
     self.ui.menu:registerToMainMenu(self)
 end
@@ -151,6 +153,23 @@ function Scriptorium:addToMainMenu(menu_items)
                             self.state:toggle("push_abandoned")
                             self.state:flush()
                         end,
+                        separator = true,
+                    },
+                    {
+                        text_func = function()
+                            local dir = self.state:get("wallpaper_dir")
+                            if dir == "" then
+                                return _("Lockscreen cover folder: off")
+                            end
+                            return T(_("Lockscreen cover folder: %1"), dir)
+                        end,
+                        help_text = _(
+                            "Copy the cover image written by the Cover-Image plugin into this folder, under a filename that changes with the book. Lockscreen pickers that cache by path — the Moaan/inkPalm one does — otherwise keep showing the first cover you ever picked. Leave empty to switch off, and keep the Cover-Image path outside this folder."
+                        ),
+                        keep_menu_open = true,
+                        callback = function(touchmenu_instance)
+                            self:editWallpaperFolder(touchmenu_instance)
+                        end,
                     },
                 },
             },
@@ -210,6 +229,47 @@ function Scriptorium:editServerSettings(touchmenu_instance)
                         if touchmenu_instance then
                             touchmenu_instance:updateItems()
                         end
+                    end,
+                },
+            },
+        },
+    }
+    UIManager:show(dialog)
+    dialog:onShowKeyboard()
+end
+
+function Scriptorium:editWallpaperFolder(touchmenu_instance)
+    local dialog
+    dialog = MultiInputDialog:new {
+        title = _("Lockscreen cover folder"),
+        fields = {
+            {
+                text = self.state:get("wallpaper_dir"),
+                hint = _("Folder the lockscreen picker reads (empty: off)"),
+            },
+        },
+        buttons = {
+            {
+                {
+                    text = _("Cancel"),
+                    id = "close",
+                    callback = function()
+                        UIManager:close(dialog)
+                    end,
+                },
+                {
+                    text = _("Save"),
+                    callback = function()
+                        local fields = dialog:getFields()
+                        local dir = util.trim(fields[1] or ""):gsub("/+$", "")
+                        self.state:set("wallpaper_dir", dir)
+                        self.state:flush()
+                        Wallpaper.ensureSourceOutside(dir, G_reader_settings)
+                        UIManager:close(dialog)
+                        if touchmenu_instance then
+                            touchmenu_instance:updateItems()
+                        end
+                        self:publishCover()
                     end,
                 },
             },
@@ -539,6 +599,27 @@ function Scriptorium:onReaderReady()
         local summary = self.ui.doc_settings:readSetting("summary")
         self.status_snapshot = summary and summary.status
     end
+    -- One tick later: the coverimage plugin writes the cover on this same
+    -- event, and handler order between plugins is not defined.
+    UIManager:nextTick(function()
+        self:publishCover()
+    end)
+end
+
+-- Republish the cover under a per-book filename, for lockscreen pickers that
+-- cache by path (scriptorium_wallpaper.lua). cover_image_path belongs to
+-- KOReader's coverimage plugin; this only reads it.
+function Scriptorium:publishCover()
+    local dir = self.state:get("wallpaper_dir")
+    if dir == "" then
+        return
+    end
+    local doc_path = self.ui and self.ui.document and self.ui.document.file
+    if not doc_path then
+        return
+    end
+    local source = Wallpaper.ensureSourceOutside(dir, G_reader_settings)
+    Wallpaper.publishQuietly(dir, source, doc_path)
 end
 
 function Scriptorium:onEndOfBook()

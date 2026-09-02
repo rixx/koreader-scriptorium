@@ -19,6 +19,7 @@ local DEFAULTS = {
     periodic_sync = true,
     push_on_finish = false,
     push_abandoned = false,
+    wallpaper_dir = "/storage/emulated/0/Wallpaper",
 }
 
 local instance = nil

@@ -18,6 +18,10 @@ there).
 - Books unknown to scriptorium are auto-created in the to-review queue.
 - Pushes are idempotent: edit your highlights after finishing and the next
   scan updates the server copy.
+- The cover written by the Cover-Image plugin is republished into
+  Settings → Lockscreen cover folder under a filename that changes with the
+  book, for lockscreen pickers that cache by path (the Moaan/inkPalm one
+  does). Empty that setting to switch it off — see SPEC §5.7.
 
 ## Requirements
 
