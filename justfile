@@ -1,11 +1,12 @@
-[private]
-default:
-    just --list
+set quiet
+set fallback
+set default-list
 
 # Run the stub-based test suites (plain luajit, no KOReader needed).
 test:
     luajit tests/test_collect.lua
     luajit tests/test_main.lua
+    luajit tests/test_wallpaper.lua
 
 # Format the Lua sources in place (requires stylua).
 fmt:
