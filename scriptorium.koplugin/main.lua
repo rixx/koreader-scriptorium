@@ -28,6 +28,7 @@ local _ = require("gettext")
 
 local Api = require("scriptorium_api")
 local Collect = require("scriptorium_collect")
+local Opds = require("scriptorium_opds")
 local State = require("scriptorium_state")
 local Wallpaper = require("scriptorium_wallpaper")
 
@@ -45,6 +46,7 @@ function Scriptorium:init()
     Wallpaper.ensureSourceOutside(self.state:get("wallpaper_dir"), G_reader_settings)
     self:onDispatcherRegisterActions()
     self.ui.menu:registerToMainMenu(self)
+    Opds.schedule()
 end
 
 function Scriptorium:onDispatcherRegisterActions()
@@ -54,6 +56,16 @@ function Scriptorium:onDispatcherRegisterActions()
         title = _("Scriptorium: push to server"),
         general = true,
     })
+    Dispatcher:registerAction("scriptorium_opds_pull", {
+        category = "none",
+        event = "ScriptoriumOpdsPull",
+        title = _("Scriptorium: pull new books from OPDS"),
+        general = true,
+    })
+end
+
+function Scriptorium:onScriptoriumOpdsPull()
+    Opds.pull(true)
 end
 
 -- Gesture-assignable: push the open book, or scan everything from the file
@@ -101,6 +113,16 @@ function Scriptorium:addToMainMenu(menu_items)
                 text = _("Push all finished books"),
                 callback = function()
                     self:scanAndPush({ interactive = true, force = true })
+                end,
+                separator = true,
+            },
+            {
+                text = _("Pull new books from OPDS"),
+                help_text = _(
+                    'Download new books from every OPDS catalog with "Sync catalog" ticked, into its sync folder. Books pulled before are skipped, even after you delete them. Also runs on its own after startup, on resume and when the network connects, at most every 30 minutes.'
+                ),
+                callback = function()
+                    Opds.pull(true)
                 end,
                 separator = true,
             },
@@ -583,8 +605,11 @@ Scriptorium.onCloseDocument = Scriptorium.maybeScan
 Scriptorium.onSuspend = Scriptorium.maybeScan
 Scriptorium.onPowerOff = Scriptorium.maybeScan
 Scriptorium.onReboot = Scriptorium.maybeScan
-Scriptorium.onResume = Scriptorium.maybeScan
-Scriptorium.onNetworkConnected = Scriptorium.maybeScan
+function Scriptorium:onResume()
+    self:maybeScan()
+    Opds.schedule()
+end
+Scriptorium.onNetworkConnected = Scriptorium.onResume
 
 function Scriptorium:onFlushSettings()
     self.state:flush()

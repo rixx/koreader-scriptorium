@@ -119,12 +119,19 @@ package.preload["ui/network/manager"] = function()
         end,
     }
 end
+local SCHEDULED = {} -- functions passed to UIManager:scheduleIn, pending
 package.preload["ui/uimanager"] = function()
     return {
         show = function() end,
         close = function() end,
         nextTick = function(self, cb)
             cb()
+        end,
+        scheduleIn = function(self, _, cb)
+            SCHEDULED[cb] = true
+        end,
+        unschedule = function(self, cb)
+            SCHEDULED[cb] = nil
         end,
     }
 end
@@ -485,6 +492,35 @@ calls_before = #HTTP_CALLS
 plugin:scanAndPush({ interactive = false })
 check(#HTTP_CALLS == calls_before + 1, "leftover book retried on next scan")
 check(plugin.state:pushed()[string.format("%02x", 70):rep(16)] ~= nil, "leftover book pushed on retry")
+
+-- 13. OPDS pull: init and resume schedule one shared background pull; menu entry exists
+local function pending()
+    local n = 0
+    for _ in pairs(SCHEDULED) do
+        n = n + 1
+    end
+    return n
+end
+check(pending() == 1, "init scheduled one OPDS pull")
+for cb in pairs(SCHEDULED) do
+    SCHEDULED[cb] = nil
+end
+plugin:onResume()
+plugin:onNetworkConnected()
+check(pending() == 1, "resume and network-connected reschedule the same pull")
+for cb in pairs(SCHEDULED) do
+    cb() -- no catalog has "Sync catalog" in the empty opds.lua: a silent no-op
+end
+check(#HTTP_CALLS == calls_before + 1, "OPDS pull without sync catalogs makes no request")
+local menu_items = {}
+plugin:addToMainMenu(menu_items)
+local found
+for _, item in ipairs(menu_items.scriptorium.sub_item_table) do
+    if item.text and item.text:find("OPDS") then
+        found = item
+    end
+end
+check(found ~= nil and found.callback ~= nil, "Scriptorium menu has the OPDS pull entry")
 
 print(failures == 0 and "ALL PASS" or (failures .. " FAILURES"))
 os.exit(failures == 0 and 0 or 1)

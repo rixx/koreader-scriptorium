@@ -193,6 +193,7 @@ scriptorium.koplugin/
     scriptorium_api.lua      -- HTTP client: POST /api/koreader/sync/ (Readwise-target pattern)
     scriptorium_state.lua    -- pushed-state + scan-cache persistence (LuaSettings)
     scriptorium_wallpaper.lua -- republish the cover under a per-book filename (§5.7)
+    scriptorium_opds.lua     -- pull new books from OPDS catalogs (§5.8)
 ```
 
 Module files carry a `scriptorium_` prefix because KOReader appends *every*
@@ -352,6 +353,53 @@ only takes effect after the next KOReader start.
 
 Single-user plugin: `wallpaper_dir` defaults to the inkPalm's
 `/storage/emulated/0/Wallpaper` rather than to off.
+
+### 5.8 OPDS pull (`scriptorium_opds.lua`)
+
+Unrelated to pushing, like §5.7; it lives here because this is the plugin
+for rixx's own device glue, and its menu is where he looks. Started as a
+KOReader user patch (`2-opds-autosync.lua` in the ereader repo), moved here
+for the menu entry (2026-10-29, user decision).
+
+Goal: every book with the calibre tag `send-to-koreader` lands on the device
+without manual downloads, and a book read and deleted on the device is not
+pulled again while calibre still has the tag.
+
+Why not KOReader's built-in OPDS sync: it keeps a watermark (first entry's
+download link) and stops when it sees it again, so it assumes newest-first
+feeds. calibre-web's tag feed sorts by date added to the library, so a book
+tagged later sits below the watermark and is never synced; the calibre
+content server sorts tag feeds by title, which breaks it entirely. Force
+sync re-downloads deleted books.
+
+Design:
+
+- Configuration is the OPDS plugin's: catalogs with "Sync catalog" ticked,
+  their credentials, `sync_dir` (per catalog, else the global one),
+  `filetypes` and `sync_max_dl` (default 50 per run), read from
+  `settings/opds.lua`. Read only: the OPDS plugin rewrites that file from
+  memory, so this module never writes it.
+- Walk every page of each feed (`rel="next"`, at most 100 pages, loop
+  guard). Per entry, take the first acquisition link of an allowed type.
+- Ledger `settings/opds_autosync.lua`, `pulled[key]`, key = Atom entry `id`
+  (calibre-web: `urn:uuid:<book uuid>`), else the download URL. A ledgered
+  book is never fetched again. A file already present under the target name
+  ("Author - Title.ext", the OPDS plugin's naming) is recorded, not
+  downloaded: never overwrite.
+- Downloads go to `<name>.part` and are renamed on HTTP 200 with a
+  non-empty body; anything else removes the `.part` and is not recorded.
+- Fetching and downloading run in `ffiutil.runInSubProcess`; the parent
+  polls the pipe, writes the ledger, refreshes the file manager.
+- Triggers: plugin init (10 s delay), `onResume`, `onNetworkConnected`,
+  coalesced into one pending pull. Background pulls wait 30 min after the
+  last *clean* run; a run with errors does not start the wait. Never turns
+  on WiFi. Manual: menu entry *Pull new books from OPDS* and a Dispatcher
+  action, both skip the wait.
+
+Verified on device (KOReader v2026.07.2-238, 2026-10-29): 31 books from
+`library.rixx.de/opds/category/16`. That version's `opdsparser` returns a
+single `<author>` as a table rather than a list of tables (later upstream
+versions list it); `entryName` handles both.
 
 ## 6. API contract
 

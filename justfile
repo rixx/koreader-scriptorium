@@ -7,6 +7,7 @@ test:
     luajit tests/test_collect.lua
     luajit tests/test_main.lua
     luajit tests/test_wallpaper.lua
+    luajit tests/test_opds.lua
 
 # Format the Lua sources in place (requires stylua).
 fmt:

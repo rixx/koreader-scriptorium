@@ -7,6 +7,7 @@ KOReader checkout needed (all KOReader modules are stubbed via
 ```sh
 luajit tests/test_collect.lua   # payload building, filtering, schema guards
 luajit tests/test_main.lua      # scan, push, idempotency, retry, debounce
+luajit tests/test_opds.lua      # OPDS feed reading, pull loop, ledger, downloads
 ```
 
 They must be run from the repo root (they add `scriptorium.koplugin/?.lua`
